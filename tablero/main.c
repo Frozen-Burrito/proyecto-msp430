@@ -2,76 +2,117 @@
  * Proyecto - Tablero de instrumentos.
  *
  * Conexiones:
- * P1.0 (A0) -> Potenciometro de control de direccion (volante).
- * P1.3 (A3) -> Potenciometro de control de velocidad (pedal).
- *
- * Mantiene P1.1 y P1.2 libres para UART.
- * Mantiene P1.4 - P1.7 libres para SPI.
+ * P1.1 -> UART RXD.
+ * P1.2 -> UART TXD.
+ * P1.3 (A3) -> Potenciometro de control de direccion (volante).
+ * P1.4 (A4) -> Potenciometro de control de velocidad (pedal).
+ * P1.5 - P1.7 -> SPI.
  */
 #include <msp430.h>
+#include <stdint.h>
 
-#define PIN_VOLANTE             (BIT0)
-#define PIN_PEDAL               (BIT3)
-#define CANAL_ADC_MAS_ALTO      (INCH_3)
-#define PINES_ADC_IN            (PIN_VOLANTE | PIN_PEDAL)
+#include "timer.h"
+#include "controls.h"
+#include "em.h"
+#include "msprf24.h"
+#include "uart.h"
+#include "watchdog.h"
 
-#define NUM_MUESTRAS_ADC        (4u)
-#define PERIODO_MUESTRA_ADC_US  (10000u)
+#define UART_BITRATE    ((uint16_t) 9600u)
 
-static volatile short adc_samples[NUM_MUESTRAS_ADC] = {};
+#define NRF24_PIPE_0        (0u)
+#define NRF24_RF_CHANNEL    (25u)
+#define NRF24_ADDR_WIDTH    (4u)
 
-// 1 vuelta = 4 valores * 512 pasos = 2048 valores
-// Media vuelta = 1024 valores
-static volatile unsigned short posicion_deseada = 512u;
+/*
+ * Recepción y retransmisión del estado del carro.
+ */
+#define STATE_PAYLOAD_LEN   (20u)
 
-// Velocidad de los motores CD, expresada en duty cycle (0% - 100%).
-static volatile unsigned char duty_cycle_velocidad = 0u;
+/*
+ * Transmisión de señal de control al carro.
+ */
+#define CONTROL_PAYLOAD_LEN (3u)
 
-// ISR para las conversiones del ADC10.
-#pragma vector=ADC10_VECTOR
-__interrupt void ADC10_ISR(void)
-{
-    // Leer valores de los dos potenciometros desde ADC_samples.
-    duty_cycle_velocidad = (((unsigned long)adc_samples[0]) * 100u) / 1023u;
-    posicion_deseada = adc_samples[1];
+#define DIR_CTRL_MSB (0u)
+#define DIR_CTRL_LSB (1u)
+#define VEL_CTRL_VAL (2u)
 
-    // Recargar direccion de adc_samples
-    ADC10CTL0 &= ~ENC;
-    ADC10SA = (unsigned short) &adc_samples;
-    ADC10CTL0 |= ENC;
-}
+#define CTRL_TRANSMIT_INTERVAL_MS   ((uint8_t) 100u)
 
-// Timer 0 A0 ISR
-#pragma vector=TIMER0_A0_VECTOR
-__interrupt void TimerA0_ccr0_isr(void)
-{
-    // Iniciar la siguiente conversion.
-    ADC10CTL0 |= ADC10SC;
-    TA0CCR0 += PERIODO_MUESTRA_ADC_US;
-}
+/*
+ * Variables globales.
+ */
+static volatile uint8_t flags_estado_sistema = 0x00;
+
+static uint8_t control_buf[CONTROL_PAYLOAD_LEN] = {};
+static uint8_t state_buf[STATE_PAYLOAD_LEN] = {};
+
+static const uint8_t rf_tx_rx_addr[NRF24_ADDR_WIDTH] = { 0x90u, 0xF0u, 0x58u, 0x85u };
 
 int main(void)
 {
+    uint16_t steering_pos;
+    uint8_t pedal_pos;
+
     // Detener el watchdog timer.
-    WDTCTL = WDTPW | WDTHOLD;
+    WATCHDOG_STOP;
 
-    // Configurar el ADC en modo de varios canales - una muestra.
-    ADC10AE0 |= PINES_ADC_IN;                       // Habilitar solo los pines usados como entradas analogicas.
-    ADC10CTL1 |= (CANAL_ADC_MAS_ALTO | CONSEQ_1);   // Secuencia de canales, desde el mas alto hasta A0.
+    spi_init();
 
-    ADC10DTC1 = NUM_MUESTRAS_ADC;                   // Numero total de conversiones.
-    ADC10SA = (unsigned short) &adc_samples;        // Inicio del buffer de conversiones del ADC.
+    controls_init();
 
-    ADC10CTL0 |= (ADC10SHT_2 | MSC | ADC10ON | ADC10IE | ENC);
+    uart_init(UART_BITRATE);
 
-    // Timer A0 para muestras del ADC (1 MHz, modo continuo).
-    TA0CTL |= TASSEL_2 | MC_2;
-    TA0CCTL0 |= CCIE;
-    TA0CCR0 = TA0R + PERIODO_MUESTRA_ADC_US;
+    msprf24_open_pipe(NRF24_PIPE_0, 0u);
+    msprf24_set_pipe_packetsize(NRF24_PIPE_0, CONTROL_PAYLOAD_LEN);
 
-    __bis_SR_register(GIE);
+    rf_channel = NRF24_RF_CHANNEL;
+    msprf24_set_channel();
 
-    while (1);
+    rf_addr_width = NRF24_ADDR_WIDTH;
+    msprf24_set_address_width();
+
+    w_tx_addr(rf_tx_rx_addr);
+
+    EM_GLOBAL_INTERRUPT_ENABLE;
+
+    while (1)
+    {
+        if (controls_get_state(&pedal_pos, &steering_pos))
+        {
+            control_buf[DIR_CTRL_MSB] = ((uint8_t) (steering_pos >> 8u));
+            control_buf[DIR_CTRL_LSB] = ((uint8_t) (steering_pos & 0xFFu));
+            control_buf[VEL_CTRL_VAL] = pedal_pos;
+
+            //TODO: Enviar buffer de control por RF.
+            w_tx_payload(CONTROL_PAYLOAD_LEN, control_buf);
+
+            msprf24_activate_tx();
+        }
+
+        msprf24_activate_rx();
+
+        if (msprf24_rx_pending())
+        {
+            msprf24_get_irq_reason();
+
+            if (RF24_IRQ_RX == rf_irq)
+            {
+                uint8_t rx_payload_len = r_rx_peek_payload_size();
+
+                r_rx_payload(rx_payload_len, state_buf);
+
+                msprf24_irq_clear(RF24_IRQ_RX);
+
+                uart_transmit(state_buf, rx_payload_len);
+            }
+        }
+
+        timer_execute_pending_callbacks();
+
+        EM_ENTER_LPM0;
+    }
 
     return 0;
 }
