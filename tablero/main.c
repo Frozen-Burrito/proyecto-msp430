@@ -10,7 +10,6 @@
  */
 #include <stdint.h>
 
-#include "timer.h"
 #include "controls.h"
 #include "em.h"
 #include "radio.h"

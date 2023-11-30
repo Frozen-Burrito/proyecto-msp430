@@ -1,0 +1,32 @@
+**
+ * Proyecto - Carro a control remoto.
+ *
+ * Conexiones:
+ *
+ * P1.0 -> Valor analogico con voltaje de la bateria.
+ *
+ * P1.1 -> (UART Rx) Tx de modulo GPS NEO-6.
+ * P1.2 -> (TA0 - CCI1A) Input capture para medir velocidad de rotacion del motor CD.
+ *
+ * P1.3 -> NRF24 CE
+ * P1.4 -> NRF24 IRQ
+ *
+ * P1.5 -> SPI CLK
+ * P1.6 -> SPI MISO (debug)
+ * P1.7 -> SPI MOSI (debug)
+ *
+ * P2.0 -> vI2C SCL
+ * P2.1 -> ENA, PWM para velocidad de motor CD izquierdo.
+ * P2.2 -> vI2C SDA
+ * P2.4 -> ENB, PWM para velocidad del motor CD derecho.
+ * P2.7 -> NRF24 CSN
+ *
+ * Segun el caso:
+ * P2.3, P2.4, P2.5 y P2.7 -> In4 - In1 de motor a pasos para controlar direccion.
+ *
+ * Timer A0 dedicado a PWM.
+ * Timer A1 dedicado a Input Capture, ADC, stepper y tiempos internos.
+ *
+ * USCI A en modo UART (8/n/1).
+ * USCI B en modo SPI (3w, MSB, MST).
+ */
