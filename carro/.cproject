@@ -139,6 +139,9 @@
 									<listOptionValue builtIn="false" value="${workspace_loc:/${ProjName}/src/battery_mon/include}"/>
 									<listOptionValue builtIn="false" value="${workspace_loc:/${ProjName}/src/gps/cfg}"/>
 									<listOptionValue builtIn="false" value="${workspace_loc:/${ProjName}/src/gps/includes}"/>
+									<listOptionValue builtIn="false" value="${workspace_loc:/${ProjName}/src/l298n/cfg}"/>
+									<listOptionValue builtIn="false" value="${workspace_loc:/${ProjName}/src/l298n/include}"/>
+									<listOptionValue builtIn="false" value="${workspace_loc:/${ProjName}/src/motor_control/include}"/>
 									<listOptionValue builtIn="false" value="${workspace_loc:/tablero/src/spi/include}"/>
 									<listOptionValue builtIn="false" value="${workspace_loc:/${ProjName}/src/nrf24/cfg}"/>
 									<listOptionValue builtIn="false" value="${workspace_loc:/${ProjName}/src/nrf24/include}"/>

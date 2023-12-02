@@ -21,7 +21,9 @@ typedef void (*timer_callback_t)(void);
 
 void timer_input_capture(uint8_t timer_id, uint8_t count_id, uint8_t pin);
 
-void timer_pwm_init(uint8_t timer_id, uint16_t period_us, uint8_t pin_mask);
+void timer_pwm_init(uint8_t timer_id, uint16_t period_us, uint8_t pin_mask, uint8_t initial_duty_period_us);
+
+void timer_pwm_set_duty(uint8_t timer_id, uint8_t pin_mask, uint16_t duty_period_us);
 
 void timer_start(uint8_t timer_id, uint8_t count_id, uint16_t period_ms, timer_callback_t cb);
 

@@ -15,8 +15,8 @@
 
 #define UART_BITRATE_DIVIDER    ((uint16_t) 104u)
 
-#define UART_TX_BUF_LEN         ((uint8_t) 3u)
-#define UART_RX_BUF_LEN         ((uint8_t) 16u)
+#define UART_TX_BUF_LEN         ((uint8_t) 32u)
+#define UART_RX_BUF_LEN         ((uint8_t) 4u)
 
 const uint8_t * const uart_end_sequence = "\r\n";
 

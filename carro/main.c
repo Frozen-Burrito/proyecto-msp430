@@ -9,19 +9,13 @@
 #include "battery_mon_config.h"
 #include "em.h"
 #include "gps.h"
+#include "motor_control.h"
 #include "radio.h"
-//#include "timer.h"
 #include "watchdog.h"
 
 /* Motores CD */
-#define MOTOR_PWM_PERIOD_US     (1000u - 1u)
-#define MOTOR_A_PWM_PIN         (BIT1)
-#define MOTOR_B_PWM_PIN         (BIT5)
-#define MOTOR_IN1_PIN           (BIT3)
-#define MOTOR_IN2_PIN           (BIT7)
 #define VEL_INPUT_CAPTURE_PIN   (BIT2)
 
-#define STATE_TX_PERIOD_MS      (100u)
 #define EVENT_TIMER_PERIOD_MS   (10u)
 
 #define GPS_UART_BITRATE    (9600u)
@@ -31,7 +25,7 @@
 /*
  * Recepción y retransmisión del estado del carro.
  */
-#define STATE_BUF_LEN           (20u)
+#define STATE_BUF_LEN           (21u)
 
 #define LAT_INT_MSB (0u)
 #define LAT_INT_LSB (1u)
@@ -58,7 +52,7 @@
 /*
  * Recepcion de señal de control al carro.
  */
-#define CONTROL_RX_BUF_MAX_LEN  (3u)
+#define CONTROL_PAYLOAD_LEN (3u)
 
 #define DIR_CTRL_MSB (0u)
 #define DIR_CTRL_LSB (1u)
@@ -69,9 +63,6 @@
 /*
  * Declaraciones de funciones.
  */
-static void pwm_init(void);
-static void motors_init(void);
-static void motor_control(uint16_t steering, uint8_t speed);
 static void input_capture_init(void);
 
 static void state_update_gps_data(uint8_t * const buffer);
@@ -87,8 +78,8 @@ static volatile uint16_t rev_fraction_period_ms = 0u;
 int main(void)
 {
     uint8_t state_transmit_buffer[STATE_BUF_LEN] = {};
-    uint8_t control_receive_buffer[CONTROL_RX_BUF_MAX_LEN] = {};
-    uint8_t control_rx_payload_len;
+    uint8_t control_receive_buffer[CONTROL_PAYLOAD_LEN] = {};
+    uint8_t received_payload_len;
 
 //    uint16_t target_steering = 0x03FFu >> 1;
     uint16_t target_steering = 0x0160u;
@@ -104,18 +95,17 @@ int main(void)
     battery_mon_init();
     gps_init(GPS_UART_BITRATE);
 
-//    radio_init(RADIO_CHANNEL);
-//    radio_transmit(state_transmit_buffer, STATE_BUF_LEN);
+    radio_init(RADIO_CHANNEL);
+    radio_transmit(state_transmit_buffer, STATE_BUF_LEN);
 
     TA0CCR0 = 1000u;
     TA0CCTL0 |= CCIE;
     TA0CTL |= (TASSEL_2 | MC_2 | TACLR);
 
-    // Initial motor test
-    motors_init();
-    motor_control(target_steering, target_speed);
+    motor_control_init();
 
     EM_GLOBAL_INTERRUPT_ENABLE;
+    EM_ENTER_LPM0;
 
     while (1)
     {
@@ -137,20 +127,19 @@ int main(void)
             state_update_gps_data(state_transmit_buffer);
         }
 
-        //        if (radio_receive(control_receive_buffer, &control_rx_payload_len))
-        //        {
-        //            target_steering = ((((uint16_t) control_receive_buffer[DIR_CTRL_MSB]) << 8u) | control_receive_buffer[DIR_CTRL_LSB]);
-        //            target_speed = control_receive_buffer[VEL_CTRL_VAL];
-        //
-        //            //TODO: Update motor control with new values.
-        //            // motor_control(target_steering, target_speed);
-        //
+        received_payload_len = radio_listen(control_receive_buffer);
 
-        //
-        //            radio_transmit(state_transmit_buffer, STATE_BUF_LEN);
-        //        }
+        if (CONTROL_PAYLOAD_LEN == received_payload_len)
+        {
+            target_steering = ((((uint16_t) control_receive_buffer[DIR_CTRL_MSB]) << 8u) | control_receive_buffer[DIR_CTRL_LSB]);
+            target_speed = control_receive_buffer[VEL_CTRL_VAL];
 
-        __bis_SR_register(GIE + CPUOFF);
+            motor_control(target_steering, target_speed);
+
+            radio_transmit(state_transmit_buffer, STATE_BUF_LEN);
+        }
+
+        EM_ENTER_LPM0;
     }
 
     return 0;
@@ -159,16 +148,7 @@ int main(void)
 #pragma vector=TIMER0_A0_VECTOR
 __interrupt void timer_a0_ccr0_isr(void)
 {
-    static uint16_t ms_before_state_tx = 0u;
     static uint16_t ms_before_bat_mon_sample = BATTERY_MON_SAMPLE_PERIOD_MS;
-
-    if (0u == ms_before_state_tx)
-    {
-//        banderas_sistema |= READY_FOR_STATE_TX;
-        ms_before_state_tx = STATE_TX_PERIOD_MS;
-    }
-
-    --ms_before_state_tx;
 
     if (0u == ms_before_bat_mon_sample)
     {
@@ -223,71 +203,6 @@ __interrupt void timer_a0_taifg_isr(void)
         timer_overflow_count++;
         break;
     }
-}
-
-void pwm_init(void)
-{
-    // Configurar funcionalidad PWM en pines seleccionados de P2.
-    P2SEL |= (MOTOR_A_PWM_PIN | MOTOR_B_PWM_PIN);
-    P2SEL2 &= ~(MOTOR_A_PWM_PIN | MOTOR_B_PWM_PIN);
-
-    P2DIR |= (MOTOR_A_PWM_PIN | MOTOR_B_PWM_PIN);
-
-    // Definir periodo y duty cycle del PWM generado.
-    TA1CCR0 = MOTOR_PWM_PERIOD_US;
-
-    TA1CCR1 = 0u;
-    TA1CCTL1 |= OUTMOD_7;
-
-    TA1CCR2 = 0u;
-    TA1CCTL2 |= OUTMOD_7;
-
-    TA1CTL |= (TASSEL_2 | MC_1 | TACLR);
-}
-
-void motors_init(void)
-{
-    pwm_init();
-
-    // Configurar el puerto 2 para controlar el motor a pasos y los motores CD.
-    P2SEL &= ~(MOTOR_IN1_PIN | MOTOR_IN2_PIN);
-    P2SEL2 &= ~(MOTOR_IN1_PIN | MOTOR_IN2_PIN);
-
-    P2DIR |= (MOTOR_IN1_PIN | MOTOR_IN2_PIN);
-
-    // Los motores CD (por ahora) no tienen reversa, configurar estado de pines IN desde el
-    // inicio.
-    P2OUT &= ~(MOTOR_IN1_PIN | MOTOR_IN2_PIN);
-    P2OUT |= MOTOR_IN1_PIN;
-}
-
-void motor_control(uint16_t steering, uint8_t speed)
-{
-    int16_t signed_steering = (((int16_t) steering) - ((0x03FF) >> 1));
-
-    int16_t motor_a_pwm_duty_cycle_us = (speed << 2) + signed_steering;
-    int16_t motor_b_pwm_duty_cycle_us = (speed << 2) - signed_steering;
-
-    if (0 > motor_a_pwm_duty_cycle_us)
-    {
-        motor_a_pwm_duty_cycle_us = 0;
-    }
-    else if (MOTOR_PWM_PERIOD_US < motor_a_pwm_duty_cycle_us)
-    {
-        motor_a_pwm_duty_cycle_us = MOTOR_PWM_PERIOD_US;
-    }
-
-    if (0 > motor_b_pwm_duty_cycle_us)
-    {
-        motor_b_pwm_duty_cycle_us = 0;
-    }
-    else if (MOTOR_PWM_PERIOD_US < motor_b_pwm_duty_cycle_us)
-    {
-        motor_b_pwm_duty_cycle_us = MOTOR_PWM_PERIOD_US;
-    }
-
-    TA1CCR1 = (uint16_t) motor_a_pwm_duty_cycle_us;
-    TA1CCR2 = (uint16_t) motor_b_pwm_duty_cycle_us;
 }
 
 void input_capture_init(void)

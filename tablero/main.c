@@ -23,7 +23,10 @@
 /*
  * Recepción y retransmisión del estado del carro.
  */
-#define STATE_BUF_MAX_LEN   (24u)
+#define STATE_BUF_MAX_PAYLOAD_LEN   (21u)
+#define STATE_BUF_MAX_LEN           (STATE_BUF_MAX_PAYLOAD_LEN + 3u)
+
+#define STATE_BUF_SYS_STATUS_BYTE   (0u)
 
 /*
  * Transmisión de señal de control al carro.
@@ -36,18 +39,24 @@
 
 int main(void)
 {
-    uint8_t control_buf[CONTROL_PAYLOAD_LEN] = {};
-    uint8_t state_buf[STATE_BUF_MAX_LEN] = {};
+    uint8_t control_tx_buf[CONTROL_PAYLOAD_LEN] = {};
+    uint8_t state_tx_rx_buf[STATE_BUF_MAX_LEN] = {};
+    uint8_t state_rx_payload_len;
+    radio_err_t radio_status;
 
     uint16_t steering_pos;
     uint8_t pedal_pos;
-    uint8_t radio_rx_payload_len;
 
     WATCHDOG_STOP;
 
     DCO_LOWEST_FREQ;
     BCS_1MHZ;
     DCO_1MHZ;
+
+    P1SEL &= ~BIT0;
+    P1SEL2 &= ~BIT0;
+    P1OUT &= ~BIT0;
+    P1DIR |= BIT0;
 
     controls_init();
 
@@ -56,21 +65,29 @@ int main(void)
     radio_init(RADIO_CHANNEL);
 
     EM_GLOBAL_INTERRUPT_ENABLE;
+    EM_ENTER_LPM0;
 
     while (1)
     {
         if (controls_get_state(&pedal_pos, &steering_pos))
         {
-            control_buf[DIR_CTRL_MSB] = ((uint8_t) (steering_pos >> 8u));
-            control_buf[DIR_CTRL_LSB] = ((uint8_t) (steering_pos & 0xFFu));
-            control_buf[VEL_CTRL_VAL] = pedal_pos;
+            P1OUT ^= BIT0;
 
-            radio_transmit(control_buf, CONTROL_PAYLOAD_LEN);
-        }
+            control_tx_buf[DIR_CTRL_MSB] = ((uint8_t) (steering_pos >> 8u));
+            control_tx_buf[DIR_CTRL_LSB] = ((uint8_t) (steering_pos & 0xFFu));
+            control_tx_buf[VEL_CTRL_VAL] = pedal_pos;
 
-        if (radio_receive(state_buf, &radio_rx_payload_len))
-        {
-            uart_transmit(state_buf, radio_rx_payload_len);
+            radio_transmit(control_tx_buf, CONTROL_PAYLOAD_LEN);
+
+            LPM4;
+
+            radio_status = radio_receive(&(state_tx_rx_buf[1]), &state_rx_payload_len);
+
+            state_tx_rx_buf[STATE_BUF_SYS_STATUS_BYTE] = radio_status;
+            state_tx_rx_buf[STATE_BUF_MAX_LEN - 2u] = '\r';
+            state_tx_rx_buf[STATE_BUF_MAX_LEN - 1u] = '\n';
+
+            uart_transmit(state_tx_rx_buf, STATE_BUF_MAX_LEN);
         }
 
         timer_execute_pending_callbacks();

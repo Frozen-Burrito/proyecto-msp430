@@ -9,7 +9,6 @@
 #define SRC_UART_INCLUDES_UART_H_
 #include <stdint.h>
 
-#define UART_TX_READY_FLAG  (BIT0)
 #define UART_RX_READY_FLAG  (BIT1)
 
 uint8_t uart_flags;

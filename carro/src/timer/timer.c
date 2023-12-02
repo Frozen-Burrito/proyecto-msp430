@@ -12,6 +12,9 @@
 #define TIMER_A0_0_FLAG (0x10u)
 #define TIMER_A0_1_FLAG (0x08u)
 
+#define P2_TA1_1_MASK   (BIT1 | BIT2)
+#define P2_TA1_2_MASK   (BIT4 | BIT5)
+
 #define MAX_TIMER_COUNT (5u)
 
 static uint8_t pending_callbacks = 0x00u;
@@ -88,6 +91,58 @@ void timer_execute_pending_callbacks(void)
     {
         pending_callbacks &= ~TIMER_A0_1_FLAG;
         callbacks[1]();
+    }
+}
+
+void timer_pwm_init(uint8_t timer_id, uint16_t period_us, uint8_t pin_mask, uint8_t initial_duty_period_us)
+{
+    if (TIMER_A1 == timer_id)
+    {
+        TA1CTL &= ~(MC_2);
+
+        TA1CCR0 = period_us;
+
+        if (P2_TA1_1_MASK & pin_mask)
+        {
+            // Configurar funcionalidad PWM en pines seleccionados de P2.
+            P2SEL |= (pin_mask & P2_TA1_1_MASK);
+            P2SEL2 &= ~(pin_mask & P2_TA1_1_MASK);
+
+            P2DIR |= (pin_mask & P2_TA1_1_MASK);
+
+            TA1CCR1 = initial_duty_period_us;
+            TA1CCTL1 |= OUTMOD_7;
+        }
+
+        if (P2_TA1_2_MASK & pin_mask)
+        {
+            // Configurar funcionalidad PWM en pines seleccionados de P2.
+            P2SEL |= (pin_mask & P2_TA1_2_MASK);
+            P2SEL2 &= ~(pin_mask & P2_TA1_2_MASK);
+
+            P2DIR |= (pin_mask & P2_TA1_2_MASK);
+
+            TA1CCR2 = initial_duty_period_us;
+            TA1CCTL2 |= OUTMOD_7;
+        }
+
+        TA1CTL |= (TASSEL_2 | MC_1 | TACLR);
+    }
+}
+
+void timer_pwm_set_duty(uint8_t timer_id, uint8_t pin_mask, uint16_t duty_period_us)
+{
+    if (TIMER_A1 == timer_id)
+    {
+        if (P2_TA1_1_MASK & pin_mask)
+        {
+            TA1CCR1 = duty_period_us;
+        }
+
+        if (P2_TA1_2_MASK & pin_mask)
+        {
+            TA1CCR2 = duty_period_us;
+        }
     }
 }
 

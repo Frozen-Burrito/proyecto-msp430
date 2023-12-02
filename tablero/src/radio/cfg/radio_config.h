@@ -22,6 +22,4 @@
 #define RADIO_PRIM_TX       (1u)    // Tablero
 //#define RADIO_PRIM_RX       (1u)    // Carro
 
-const uint8_t rf_tx_rx_addr[RADIO_ADDRESS_WIDTH] = { 0x90u, 0xF0u, 0x58u, 0x85u, 0x22u };
-
 #endif /* SRC_RADIO_CFG_RADIO_CONFIG_H_ */

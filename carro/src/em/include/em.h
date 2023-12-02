@@ -10,8 +10,8 @@
 
 #include <msp430.h>
 
-#define EM_GLOBAL_INTERRUPT_ENABLE __bis_SR_register(GIE)
-#define EM_ENTER_LPM0 __bis_SR_register(CPUOFF)
+#define EM_GLOBAL_INTERRUPT_ENABLE  (__bis_SR_register(GIE))
+#define EM_ENTER_LPM0               (LPM0)
 
 #define DCO_LOWEST_FREQ     (DCOCTL = 0)
 #define BCS_1MHZ            (BCSCTL1 = CALBC1_1MHZ)

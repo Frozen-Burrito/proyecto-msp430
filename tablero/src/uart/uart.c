@@ -36,16 +36,13 @@ void uart_init(uint16_t bitrate)
 
     UCA0CTL1 &= ~UCSWRST;
 
-    uart_flags |= UART_TX_READY_FLAG;
-
 //    IE2 |= UCA0RXIE;
 }
 
 void uart_transmit(const uint8_t * const buf, uint8_t size)
 {
-    if (0u == buf || 0u == size || UART_TX_BUF_LEN < size || 0u == (UART_TX_READY_FLAG & uart_flags)) return;
+    if (0u == buf || 0u == size || UART_TX_BUF_LEN < size) return;
 
-    uart_flags &= ~UART_TX_READY_FLAG;
     transmit_len = size;
 
     uint8_t i;
@@ -73,9 +70,8 @@ __interrupt void usci_tx_isr(void)
     if (transmit_len <= transmit_byte_idx)
     {
         IE2 &= ~UCA0TXIE;
+        transmit_len = 0u;
         transmit_byte_idx = 0u;
-        uart_flags |= UART_TX_READY_FLAG;
-        __bic_SR_register_on_exit(CPUOFF);
     }
 }
 
@@ -91,6 +87,5 @@ __interrupt void usci_rx_isr(void)
     {
         receive_byte_idx = 0u;
         uart_flags |= UART_RX_READY_FLAG;
-        __bic_SR_register(CPUOFF);
     }
 }
