@@ -13,6 +13,6 @@
 
 void motor_control_init(void);
 
-void motor_control(uint16_t steering, uint8_t speed);
+void motor_control(uint8_t steering, uint8_t speed);
 
 #endif /* SRC_MOTOR_CONTROL_INCLUDE_MOTOR_CONTROL_H_ */

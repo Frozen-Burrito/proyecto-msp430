@@ -19,6 +19,9 @@
 #define MOTOR_B_PWM_PIN         ((uint8_t) 0x20u)
 #define MOTOR_B_PWM_PORT        ((uint8_t) 2u)
 
+#define MOTOR_CUTOFF_SPEED      ((uint8_t) 100u)
+#define MOTOR_MAX_SPEED         ((uint8_t) 50u)
+
 //#define MOTOR_FORWARD_ONLY      (1u)
 
 #ifndef MOTOR_FORWARD_ONLY

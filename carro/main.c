@@ -34,8 +34,8 @@
 #define LON_DEC_XSB (8u)
 #define LON_DEC_LSB (9u)
 #define GPS_STAT_FG (10u)
-#define VEL_RPM_MSB (11u)
-#define VEL_RPM_LSB (12u)
+#define REV_MS_MSB  (11u)
+#define REV_MS_LSB  (12u)
 #define BATT_MV_MSB (13u)
 #define BATT_MV_LSB (14u)
 #define ACCEL_X_MSB (15u)
@@ -48,11 +48,10 @@
 /*
  * Recepcion de señal de control al carro.
  */
-#define CONTROL_PAYLOAD_LEN (3u)
+#define CONTROL_PAYLOAD_LEN (2u)
 
-#define DIR_CTRL_MSB (0u)
-#define DIR_CTRL_LSB (1u)
-#define VEL_CTRL_VAL (2u)
+#define DIR_CTRL_VAL (0u)
+#define VEL_CTRL_VAL (1u)
 
 static void state_update_gps_data(uint8_t * const buffer);
 
@@ -62,8 +61,8 @@ int main(void)
     uint8_t control_receive_buffer[CONTROL_PAYLOAD_LEN] = {};
     uint8_t received_payload_len;
 
-    uint16_t target_steering = 0x03FFu >> 1;
-    uint8_t target_speed = 100u;
+    uint8_t target_steering = 0xFFu >> 1;
+    uint8_t target_speed = 0u;
 
     WATCHDOG_STOP;
 
@@ -90,7 +89,7 @@ int main(void)
         if (CONTROL_PAYLOAD_LEN == received_payload_len)
         {
             // Control de motores con payload recibida.
-            target_steering = ((((uint16_t) control_receive_buffer[DIR_CTRL_MSB]) << 8u) | control_receive_buffer[DIR_CTRL_LSB]);
+            target_steering = control_receive_buffer[DIR_CTRL_VAL];
             target_speed = control_receive_buffer[VEL_CTRL_VAL];
 
             motor_control(target_steering, target_speed);
@@ -101,8 +100,8 @@ int main(void)
             state_transmit_buffer[BATT_MV_LSB] = (uint8_t) (battery_mv & 0x00FFu);
 
             uint16_t rev_fraction_period_ms = (uint16_t) (rev_fraction_period_us / 1000u);
-            state_transmit_buffer[VEL_RPM_MSB] = (uint8_t) (rev_fraction_period_ms >> 8u);
-            state_transmit_buffer[VEL_RPM_LSB] = (uint8_t) (rev_fraction_period_ms & 0x00FFu);
+            state_transmit_buffer[REV_MS_MSB] = (uint8_t) (rev_fraction_period_ms >> 8u);
+            state_transmit_buffer[REV_MS_LSB] = (uint8_t) (rev_fraction_period_ms & 0x00FFu);
 
             if (new_gps_data)
             {

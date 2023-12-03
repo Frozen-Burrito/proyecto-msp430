@@ -11,9 +11,9 @@ void motor_control_init(void)
     l298n_init(MOTOR_CHANNEL_A | MOTOR_CHANNEL_B);
 }
 
-void motor_control(uint16_t steering, uint8_t speed)
+void motor_control(uint8_t steering, uint8_t speed)
 {
-    int16_t signed_steering = (int16_t) ((steering >> 2) - (0xFF >> 1));
+    int8_t signed_steering = (int8_t) (steering - (0xFF >> 1));
 
     int16_t motor_a_speed = ((int16_t) speed) + signed_steering;
     int16_t motor_b_speed = ((int16_t) speed) - signed_steering;
