@@ -137,6 +137,8 @@
 									<listOptionValue builtIn="false" value="${workspace_loc:/${ProjName}/src/adc10/include}"/>
 									<listOptionValue builtIn="false" value="${workspace_loc:/${ProjName}/src/battery_mon/cfg}"/>
 									<listOptionValue builtIn="false" value="${workspace_loc:/${ProjName}/src/battery_mon/include}"/>
+									<listOptionValue builtIn="false" value="${workspace_loc:/${ProjName}/src/velocity_sensor/cfg}"/>
+									<listOptionValue builtIn="false" value="${workspace_loc:/${ProjName}/src/velocity_sensor/include}"/>
 									<listOptionValue builtIn="false" value="${workspace_loc:/${ProjName}/src/gps/cfg}"/>
 									<listOptionValue builtIn="false" value="${workspace_loc:/${ProjName}/src/gps/includes}"/>
 									<listOptionValue builtIn="false" value="${workspace_loc:/${ProjName}/src/l298n/cfg}"/>

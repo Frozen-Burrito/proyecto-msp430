@@ -6,18 +6,13 @@
 #include <stdint.h>
 
 #include "battery_mon.h"
-#include "battery_mon_config.h"
 #include "em.h"
 #include "gps.h"
 #include "motor_control.h"
 #include "radio.h"
 #include "timer.h"
+#include "velocity_sensor.h"
 #include "watchdog.h"
-
-/* Motores CD */
-#define VEL_INPUT_CAPTURE_PIN   (BIT2)
-
-#define EVENT_TIMER_PERIOD_MS   (10u)
 
 #define GPS_UART_BITRATE    (9600u)
 
@@ -59,22 +54,7 @@
 #define DIR_CTRL_LSB (1u)
 #define VEL_CTRL_VAL (2u)
 
-#define BEGIN_BATTERY_MONITOR_SAMPLE    (BIT0)
-
-/*
- * Declaraciones de funciones.
- */
-static void input_capture_init(void);
-
 static void state_update_gps_data(uint8_t * const buffer);
-
-/**
- * Variables de estado global.
- */
-static volatile uint8_t banderas_sistema = 0b00000000;
-
-// El tiempo (ms) que tarda en girar 1/20 de revolucion la rueda.
-static volatile uint16_t rev_fraction_period_ms = 0u;
 
 int main(void)
 {
@@ -91,7 +71,7 @@ int main(void)
     BCS_1MHZ;
     DCO_1MHZ;
 
-    input_capture_init();
+    velocity_sensor_init();
     battery_mon_init();
     gps_init(GPS_UART_BITRATE);
 
@@ -120,6 +100,7 @@ int main(void)
             state_transmit_buffer[BATT_MV_MSB] = (uint8_t) (battery_mv >> 8u);
             state_transmit_buffer[BATT_MV_LSB] = (uint8_t) (battery_mv & 0x00FFu);
 
+            uint16_t rev_fraction_period_ms = (uint16_t) (rev_fraction_period_us / 1000u);
             state_transmit_buffer[VEL_RPM_MSB] = (uint8_t) (rev_fraction_period_ms >> 8u);
             state_transmit_buffer[VEL_RPM_LSB] = (uint8_t) (rev_fraction_period_ms & 0x00FFu);
 
@@ -137,59 +118,6 @@ int main(void)
     }
 
     return 0;
-}
-
-#pragma vector=TIMER0_A1_VECTOR
-__interrupt void timer_a0_taifg_isr(void)
-{
-    // Esta ISR es invocada para CCR1, CCR2 y TAIFG (overflow).
-    static volatile uint16_t timer_overflow_count = 0u;
-    static uint8_t i = 0u;
-    static uint16_t edges[2u] = {};
-
-    switch (TA0IV)
-    {
-    case TA0IV_TACCR1:
-        if (CCI & TA0CCTL1)
-        {
-            edges[i++] = TA0CCR1;
-
-            if (2u <= i)
-            {
-                i = 0u;
-
-                if (edges[0] > edges[1])
-                {
-                    if (0u != timer_overflow_count)
-                    {
-                        timer_overflow_count--;
-                    }
-
-                    rev_fraction_period_ms = (uint16_t) (((uint32_t) (edges[1] - edges[0])) + (0xFFFFu * timer_overflow_count)) / 1000u;
-                }
-                else
-                {
-                    rev_fraction_period_ms = (uint16_t) (((uint32_t) (edges[0] - edges[1])) + (0xFFFFu * timer_overflow_count)) / 1000u;
-                }
-            }
-
-            timer_overflow_count = 0u;
-        }
-        break;
-    case TA0IV_TAIFG:
-        timer_overflow_count++;
-        break;
-    }
-}
-
-void input_capture_init(void)
-{
-    P1SEL |= VEL_INPUT_CAPTURE_PIN;
-    P1SEL2 &= ~VEL_INPUT_CAPTURE_PIN;
-
-    P1DIR &= ~VEL_INPUT_CAPTURE_PIN;
-
-    TA0CCTL1 |= (CM_1 | CCIS_0 | SCS | CAP | CCIE);
 }
 
 void state_update_gps_data(uint8_t * const buffer)

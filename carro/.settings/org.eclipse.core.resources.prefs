@@ -27,5 +27,7 @@ encoding//Release/src/timer/subdir_rules.mk=UTF-8
 encoding//Release/src/timer/subdir_vars.mk=UTF-8
 encoding//Release/src/uart/subdir_rules.mk=UTF-8
 encoding//Release/src/uart/subdir_vars.mk=UTF-8
+encoding//Release/src/velocity_sensor/subdir_rules.mk=UTF-8
+encoding//Release/src/velocity_sensor/subdir_vars.mk=UTF-8
 encoding//Release/subdir_rules.mk=UTF-8
 encoding//Release/subdir_vars.mk=UTF-8
