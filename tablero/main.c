@@ -1,12 +1,6 @@
 /**
  * Proyecto - Tablero de instrumentos.
  *
- * Conexiones:
- * P1.1 -> UART RXD.
- * P1.2 -> UART TXD.
- * P1.3 (A3) -> Potenciometro de control de direccion (volante).
- * P1.4 (A4) -> Potenciometro de control de velocidad (pedal).
- * P1.5 - P1.7 -> SPI.
  */
 #include <stdint.h>
 
@@ -31,11 +25,10 @@
 /*
  * Transmisión de señal de control al carro.
  */
-#define CONTROL_PAYLOAD_LEN (3u)
+#define CONTROL_PAYLOAD_LEN (2u)
 
-#define DIR_CTRL_MSB (0u)
-#define DIR_CTRL_LSB (1u)
-#define VEL_CTRL_VAL (2u)
+#define DIR_CTRL_VAL (0u)
+#define VEL_CTRL_VAL (1u)
 
 int main(void)
 {
@@ -44,7 +37,7 @@ int main(void)
     uint8_t state_rx_payload_len;
     radio_err_t radio_status;
 
-    uint16_t steering_pos;
+    uint8_t steering_pos;
     uint8_t pedal_pos;
 
     WATCHDOG_STOP;
@@ -52,11 +45,6 @@ int main(void)
     DCO_LOWEST_FREQ;
     BCS_1MHZ;
     DCO_1MHZ;
-
-    P1SEL &= ~BIT0;
-    P1SEL2 &= ~BIT0;
-    P1OUT &= ~BIT0;
-    P1DIR |= BIT0;
 
     controls_init();
 
@@ -73,8 +61,7 @@ int main(void)
         {
             P1OUT ^= BIT0;
 
-            control_tx_buf[DIR_CTRL_MSB] = ((uint8_t) (steering_pos >> 8u));
-            control_tx_buf[DIR_CTRL_LSB] = ((uint8_t) (steering_pos & 0xFFu));
+            control_tx_buf[DIR_CTRL_VAL] = steering_pos;
             control_tx_buf[VEL_CTRL_VAL] = pedal_pos;
 
             radio_transmit(control_tx_buf, CONTROL_PAYLOAD_LEN);
