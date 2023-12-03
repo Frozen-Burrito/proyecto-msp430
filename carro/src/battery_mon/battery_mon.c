@@ -11,12 +11,7 @@
 
 void battery_mon_init(void)
 {
-    adc10_init(BATTERY_ADC_PIN);
-}
-
-void battery_mon_sample(void)
-{
-    adc10_start_conversion();
+    adc10_init(BATTERY_ADC_PIN, BATTERY_MON_SAMPLE_PERIOD_MS);
 }
 
 uint16_t battery_mon_get_voltage(void)

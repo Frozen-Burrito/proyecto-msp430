@@ -7,7 +7,11 @@
 #include <msp430.h>
 #include "adc10.h"
 
+#ifdef ADC10_USE_DEDICATED_TIMER
+void adc10_init(uint8_t adc_inputs, uint16_t sample_period_ms)
+#else
 void adc10_init(uint8_t adc_inputs)
+#endif
 {
     ADC10AE0 |= adc_inputs;                                     // Habilitar solo los pines usados como entradas analogicas.
     ADC10CTL1 |= (((uint16_t) ADC10_FIRST_CHANNEL) * 0x1000u);  // Empezar el muestreo desde ADC10_FIRST_CHANNEL.
@@ -27,7 +31,7 @@ void adc10_init(uint8_t adc_inputs)
     ADC10CTL0 |= (ADC10SHT_2 | MSC | ADC10ON | ADC10IE | ENC);
 
 #ifdef ADC10_USE_DEDICATED_TIMER
-    timer_start(ADC10_TIMER_SOURCE, ADC10_TIMER_COUNT, ADC10_SAMPLE_PERIOD_MS, adc10_start_conversion);
+    timer_start(ADC10_TIMER_SOURCE, ADC10_TIMER_COUNT, sample_period_ms, adc10_start_conversion);
 #endif /* ADC10_USE_DEDICATED_TIMER */
 
     adc10_flags |= ADC10_INITIALIZED;

@@ -11,6 +11,7 @@
 #include "gps.h"
 #include "motor_control.h"
 #include "radio.h"
+#include "timer.h"
 #include "watchdog.h"
 
 /* Motores CD */
@@ -81,8 +82,7 @@ int main(void)
     uint8_t control_receive_buffer[CONTROL_PAYLOAD_LEN] = {};
     uint8_t received_payload_len;
 
-//    uint16_t target_steering = 0x03FFu >> 1;
-    uint16_t target_steering = 0x0160u;
+    uint16_t target_steering = 0x03FFu >> 1;
     uint8_t target_speed = 100u;
 
     WATCHDOG_STOP;
@@ -98,10 +98,6 @@ int main(void)
     radio_init(RADIO_CHANNEL);
     radio_transmit(state_transmit_buffer, STATE_BUF_LEN);
 
-    TA0CCR0 = 1000u;
-    TA0CCTL0 |= CCIE;
-    TA0CTL |= (TASSEL_2 | MC_2 | TACLR);
-
     motor_control_init();
 
     EM_GLOBAL_INTERRUPT_ENABLE;
@@ -109,57 +105,38 @@ int main(void)
 
     while (1)
     {
-        if (BEGIN_BATTERY_MONITOR_SAMPLE & banderas_sistema)
-        {
-            battery_mon_sample();
-            banderas_sistema &= ~BEGIN_BATTERY_MONITOR_SAMPLE;
-
-            uint16_t battery_mv = battery_mon_get_voltage();
-            state_transmit_buffer[BATT_MV_MSB] = (uint8_t) (battery_mv >> 8u);
-            state_transmit_buffer[BATT_MV_LSB] = (uint8_t) (battery_mv & 0x00FFu);
-        }
-
-        state_transmit_buffer[VEL_RPM_MSB] = (uint8_t) (rev_fraction_period_ms >> 8u);
-        state_transmit_buffer[VEL_RPM_LSB] = (uint8_t) (rev_fraction_period_ms & 0x00FFu);
-
-        if (new_gps_data)
-        {
-            state_update_gps_data(state_transmit_buffer);
-        }
-
         received_payload_len = radio_listen(control_receive_buffer);
 
         if (CONTROL_PAYLOAD_LEN == received_payload_len)
         {
+            // Control de motores con payload recibida.
             target_steering = ((((uint16_t) control_receive_buffer[DIR_CTRL_MSB]) << 8u) | control_receive_buffer[DIR_CTRL_LSB]);
             target_speed = control_receive_buffer[VEL_CTRL_VAL];
 
             motor_control(target_steering, target_speed);
 
+            // Obtener datos de sensores para la siguiente transmision de estado.
+            uint16_t battery_mv = battery_mon_get_voltage();
+            state_transmit_buffer[BATT_MV_MSB] = (uint8_t) (battery_mv >> 8u);
+            state_transmit_buffer[BATT_MV_LSB] = (uint8_t) (battery_mv & 0x00FFu);
+
+            state_transmit_buffer[VEL_RPM_MSB] = (uint8_t) (rev_fraction_period_ms >> 8u);
+            state_transmit_buffer[VEL_RPM_LSB] = (uint8_t) (rev_fraction_period_ms & 0x00FFu);
+
+            if (new_gps_data)
+            {
+                state_update_gps_data(state_transmit_buffer);
+            }
+
             radio_transmit(state_transmit_buffer, STATE_BUF_LEN);
         }
+
+        timer_execute_pending_callbacks();
 
         EM_ENTER_LPM0;
     }
 
     return 0;
-}
-
-#pragma vector=TIMER0_A0_VECTOR
-__interrupt void timer_a0_ccr0_isr(void)
-{
-    static uint16_t ms_before_bat_mon_sample = BATTERY_MON_SAMPLE_PERIOD_MS;
-
-    if (0u == ms_before_bat_mon_sample)
-    {
-        ms_before_bat_mon_sample = BATTERY_MON_SAMPLE_PERIOD_MS;
-        banderas_sistema |= BEGIN_BATTERY_MONITOR_SAMPLE;
-        __bic_SR_register_on_exit(CPUOFF);
-    }
-
-    --ms_before_bat_mon_sample;
-
-    TA0CCR0 += 1000u;
 }
 
 #pragma vector=TIMER0_A1_VECTOR
