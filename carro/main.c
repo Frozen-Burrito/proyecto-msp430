@@ -70,6 +70,11 @@ int main(void)
     BCS_1MHZ;
     DCO_1MHZ;
 
+    P1SEL &= ~BIT3;
+    P1SEL2 &= ~BIT3;
+    P1OUT |= BIT3;
+    P1DIR |= BIT3;
+
     velocity_sensor_init();
     battery_mon_init();
     gps_init(GPS_UART_BITRATE);

@@ -8,8 +8,10 @@
 #include <msp430.h>
 #include "l298n_config.h"
 
-#define MOTOR_MIN_DUTY_CYCLE_US     ((MOTOR_PWM_PERIOD_US * MOTOR_CUTOFF_SPEED / MOTOR_MAX_SPEED))
-#define MOTOR_DUTY_CYCLE_RANGE_US   (MOTOR_PWM_PERIOD_US - MOTOR_MIN_DUTY_CYCLE_US)
+// 747
+#define MOTOR_MIN_DUTY_CYCLE_US     ((uint16_t) ((((uint32_t) MOTOR_PWM_PERIOD_US) * MOTOR_CUTOFF_SPEED / MOTOR_MAX_SPEED)))
+// 252
+#define MOTOR_DUTY_CYCLE_RANGE_US   ((uint16_t) (MOTOR_PWM_PERIOD_US - MOTOR_MIN_DUTY_CYCLE_US))
 
 void l298n_init(uint8_t motor_channels)
 {
@@ -40,7 +42,7 @@ void l298n_init(uint8_t motor_channels)
 void l298n_motor_set_speed(uint8_t motor_channels, uint8_t speed, uint8_t direction)
 {
     // Calcular velocidad, ajustada para direccion de giro y duty cycle de cutoff.
-    uint16_t motor_pwm_duty_cycle_us = (((uint16_t) speed) * MOTOR_DUTY_CYCLE_RANGE_US) / MOTOR_MAX_SPEED;
+    uint16_t motor_pwm_duty_cycle_us = (((uint32_t) speed) * MOTOR_DUTY_CYCLE_RANGE_US) / MOTOR_MAX_SPEED;
 
     if (0u < speed)
     {
