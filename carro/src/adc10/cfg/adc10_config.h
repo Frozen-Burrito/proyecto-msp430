@@ -18,7 +18,7 @@
 #define ADC10_SAMPLE_PERIOD_MS      ((uint16_t) 5000u)
 #define ADC10_SAMPLE_BUF_LEN        ((uint8_t) 1u)
 
-#define ADC10_USE_DEDICATED_TIMER
+//#define ADC10_USE_DEDICATED_TIMER
 
 #ifdef ADC10_USE_DEDICATED_TIMER
 #define ADC10_TIMER_SOURCE          (TIMER_A0)

@@ -8,7 +8,7 @@
 #include "controls.h"
 #include "controls_config.h"
 
-static uint8_t direction_reverse = 0u;
+static volatile uint8_t direction_reverse = 0u;
 
 void controls_init(void)
 {

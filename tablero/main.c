@@ -59,8 +59,6 @@ int main(void)
     {
         if (controls_get_state(&pedal_pos, &steering_pos))
         {
-            P1OUT ^= BIT0;
-
             control_tx_buf[DIR_CTRL_VAL] = steering_pos;
             control_tx_buf[VEL_CTRL_VAL] = pedal_pos;
 

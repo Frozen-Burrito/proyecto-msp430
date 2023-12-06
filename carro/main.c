@@ -9,10 +9,21 @@
 #include "em.h"
 #include "gps.h"
 #include "motor_control.h"
+#include "mpu6050.h"
 #include "radio.h"
 #include "timer.h"
 #include "velocity_sensor.h"
 #include "watchdog.h"
+
+#ifdef MPU6050_HARDWARE_I2C
+#include "i2c_bus.h"
+#else
+#include "sw_i2c_bus.h"
+#endif
+
+#define EVENT_TIMER_PERIOD_MS           ((uint16_t) 10u)
+#define MPU6050_SAMPLE_PERIOD_COUNTS    ((uint16_t) 5u)
+#define BATTERY_SAMPLE_PERIOD_COUNTS    ((uint16_t) 500u)
 
 #define GPS_UART_BITRATE    (9600u)
 
@@ -53,13 +64,18 @@
 #define DIR_CTRL_VAL (0u)
 #define VEL_CTRL_VAL (1u)
 
+static uint8_t state_transmit_buffer[STATE_BUF_LEN] = {};
+
+static uint8_t are_motors_enabled = 0u;
+
 static void state_update_gps_data(uint8_t * const buffer);
+static void timer_event_callback(void);
 
 int main(void)
 {
-    uint8_t state_transmit_buffer[STATE_BUF_LEN] = {};
     uint8_t control_receive_buffer[CONTROL_PAYLOAD_LEN] = {};
     uint8_t received_payload_len;
+    static volatile uint8_t mpu6050_has_error;
 
     uint8_t target_steering = 0xFFu >> 1;
     uint8_t target_speed = 0u;
@@ -70,14 +86,19 @@ int main(void)
     BCS_1MHZ;
     DCO_1MHZ;
 
-    P1SEL &= ~BIT3;
-    P1SEL2 &= ~BIT3;
-    P1OUT |= BIT3;
-    P1DIR |= BIT3;
-
     velocity_sensor_init();
     battery_mon_init();
     gps_init(GPS_UART_BITRATE);
+
+    i2c_master_init();
+    mpu6050_has_error = mpu6050_init();
+
+    if (0u == mpu6050_has_error)
+    {
+        mpu6050_interrupt_en();
+    }
+
+    timer_start(TIMER_A0, COUNT_1, EVENT_TIMER_PERIOD_MS, timer_event_callback);
 
     radio_init(RADIO_CHANNEL);
     radio_transmit(state_transmit_buffer, STATE_BUF_LEN);
@@ -96,6 +117,7 @@ int main(void)
             // Control de motores con payload recibida.
             target_steering = control_receive_buffer[DIR_CTRL_VAL];
             target_speed = control_receive_buffer[VEL_CTRL_VAL];
+            are_motors_enabled = (0u != target_speed);
 
             motor_control(target_steering, target_speed);
 
@@ -122,6 +144,42 @@ int main(void)
     }
 
     return 0;
+}
+
+void timer_event_callback(void)
+{
+    static uint16_t counts_before_mpu6050_sample = MPU6050_SAMPLE_PERIOD_COUNTS;
+    static uint16_t counts_before_battery_sample = BATTERY_SAMPLE_PERIOD_COUNTS;
+    int16_t acce_x;
+    int16_t pitch;
+    int16_t roll;
+
+    if (0u == counts_before_battery_sample)
+    {
+        counts_before_battery_sample = BATTERY_SAMPLE_PERIOD_COUNTS;
+        battery_mon_sample(are_motors_enabled);
+    }
+    else
+    {
+        --counts_before_battery_sample;
+    }
+
+    if (0u == counts_before_mpu6050_sample)
+    {
+        counts_before_mpu6050_sample = MPU6050_SAMPLE_PERIOD_COUNTS;
+        mpu6050_accel_pitch_roll(&acce_x, &pitch, &roll);
+
+        state_transmit_buffer[ACCEL_X_MSB] = (acce_x >> 8u);
+        state_transmit_buffer[ACCEL_X_LSB] = acce_x;
+        state_transmit_buffer[PITCH_MSB] = (pitch >> 8u);
+        state_transmit_buffer[PITCH_LSB] = pitch;
+        state_transmit_buffer[ROLL_MSB] = (roll >> 8u);
+        state_transmit_buffer[ROLL_LSB] = roll;
+    }
+    else
+    {
+        --counts_before_mpu6050_sample;
+    }
 }
 
 void state_update_gps_data(uint8_t * const buffer)

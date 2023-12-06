@@ -14,6 +14,8 @@
 #define BATTERY_MIN_MV      ((uint16_t) 3600u)
 #define BATTERY_MAX_MV      ((uint16_t) 6400u)
 
+#define LOAD_ACTIVE_OFFSET_MV           ((uint16_t) 700u)
+
 #define BATTERY_MON_SAMPLE_PERIOD_MS    ((uint16_t) 5000u)
 
 #endif /* SRC_BATTERY_MON_CFG_BATTERY_MON_CONFIG_H_ */

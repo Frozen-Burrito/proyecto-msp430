@@ -29,8 +29,19 @@ void motor_control(uint8_t steering, uint8_t speed)
     }
 #endif
 
-    int16_t motor_a_speed = ((int16_t) speed) + signed_steering;
-    int16_t motor_b_speed = ((int16_t) speed) - signed_steering;
+    int16_t motor_a_speed = ((int16_t) speed);
+
+    if (0u < speed)
+    {
+        motor_a_speed += signed_steering;
+    }
+
+    int16_t motor_b_speed = ((int16_t) speed);
+
+    if (0u < speed)
+    {
+        motor_b_speed -= signed_steering;
+    }
 
     if (0 > motor_a_speed)
     {

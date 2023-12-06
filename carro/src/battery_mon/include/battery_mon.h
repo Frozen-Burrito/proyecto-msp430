@@ -13,6 +13,8 @@
 
 void battery_mon_init(void);
 
+void battery_mon_sample(uint8_t is_load_active);
+
 uint16_t battery_mon_get_voltage(void);
 
 #endif /* SRC_BATTERY_MON_INCLUDE_BATTERY_MON_H_ */
