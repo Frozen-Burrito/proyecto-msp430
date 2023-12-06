@@ -20,7 +20,11 @@ volatile uint8_t adc10_flags;
 
 volatile uint16_t adc10_samples[ADC10_SAMPLE_BUF_LEN] = {};
 
+#ifdef ADC10_USE_DEDICATED_TIMER
+void adc10_init(uint8_t adc_inputs, uint16_t sample_period_ms);
+#else
 void adc10_init(uint8_t adc_inputs);
+#endif
 
 void adc10_start_conversion(void);
 

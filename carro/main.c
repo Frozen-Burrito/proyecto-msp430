@@ -6,17 +6,24 @@
 #include <stdint.h>
 
 #include "battery_mon.h"
-#include "battery_mon_config.h"
 #include "em.h"
 #include "gps.h"
 #include "motor_control.h"
+#include "mpu6050.h"
 #include "radio.h"
+#include "timer.h"
+#include "velocity_sensor.h"
 #include "watchdog.h"
 
-/* Motores CD */
-#define VEL_INPUT_CAPTURE_PIN   (BIT2)
+#ifdef MPU6050_HARDWARE_I2C
+#include "i2c_bus.h"
+#else
+#include "sw_i2c_bus.h"
+#endif
 
-#define EVENT_TIMER_PERIOD_MS   (10u)
+#define EVENT_TIMER_PERIOD_MS           ((uint16_t) 10u)
+#define MPU6050_SAMPLE_PERIOD_COUNTS    ((uint16_t) 5u)
+#define BATTERY_SAMPLE_PERIOD_COUNTS    ((uint16_t) 500u)
 
 #define GPS_UART_BITRATE    (9600u)
 
@@ -38,8 +45,8 @@
 #define LON_DEC_XSB (8u)
 #define LON_DEC_LSB (9u)
 #define GPS_STAT_FG (10u)
-#define VEL_RPM_MSB (11u)
-#define VEL_RPM_LSB (12u)
+#define REV_MS_MSB  (11u)
+#define REV_MS_LSB  (12u)
 #define BATT_MV_MSB (13u)
 #define BATT_MV_LSB (14u)
 #define ACCEL_X_MSB (15u)
@@ -52,38 +59,26 @@
 /*
  * Recepcion de señal de control al carro.
  */
-#define CONTROL_PAYLOAD_LEN (3u)
+#define CONTROL_PAYLOAD_LEN (2u)
 
-#define DIR_CTRL_MSB (0u)
-#define DIR_CTRL_LSB (1u)
-#define VEL_CTRL_VAL (2u)
+#define DIR_CTRL_VAL (0u)
+#define VEL_CTRL_VAL (1u)
 
-#define BEGIN_BATTERY_MONITOR_SAMPLE    (BIT0)
+static uint8_t state_transmit_buffer[STATE_BUF_LEN] = {};
 
-/*
- * Declaraciones de funciones.
- */
-static void input_capture_init(void);
+static uint8_t are_motors_enabled = 0u;
 
 static void state_update_gps_data(uint8_t * const buffer);
-
-/**
- * Variables de estado global.
- */
-static volatile uint8_t banderas_sistema = 0b00000000;
-
-// El tiempo (ms) que tarda en girar 1/20 de revolucion la rueda.
-static volatile uint16_t rev_fraction_period_ms = 0u;
+static void timer_event_callback(void);
 
 int main(void)
 {
-    uint8_t state_transmit_buffer[STATE_BUF_LEN] = {};
     uint8_t control_receive_buffer[CONTROL_PAYLOAD_LEN] = {};
     uint8_t received_payload_len;
+    static volatile uint8_t mpu6050_has_error;
 
-//    uint16_t target_steering = 0x03FFu >> 1;
-    uint16_t target_steering = 0x0160u;
-    uint8_t target_speed = 100u;
+    uint8_t target_steering = 0xFFu >> 1;
+    uint8_t target_speed = 0u;
 
     WATCHDOG_STOP;
 
@@ -91,16 +86,22 @@ int main(void)
     BCS_1MHZ;
     DCO_1MHZ;
 
-    input_capture_init();
+    velocity_sensor_init();
     battery_mon_init();
     gps_init(GPS_UART_BITRATE);
 
+    i2c_master_init();
+    mpu6050_has_error = mpu6050_init();
+
+    if (0u == mpu6050_has_error)
+    {
+        mpu6050_interrupt_en();
+    }
+
+    timer_start(TIMER_A0, COUNT_1, EVENT_TIMER_PERIOD_MS, timer_event_callback);
+
     radio_init(RADIO_CHANNEL);
     radio_transmit(state_transmit_buffer, STATE_BUF_LEN);
-
-    TA0CCR0 = 1000u;
-    TA0CCTL0 |= CCIE;
-    TA0CTL |= (TASSEL_2 | MC_2 | TACLR);
 
     motor_control_init();
 
@@ -109,35 +110,35 @@ int main(void)
 
     while (1)
     {
-        if (BEGIN_BATTERY_MONITOR_SAMPLE & banderas_sistema)
-        {
-            battery_mon_sample();
-            banderas_sistema &= ~BEGIN_BATTERY_MONITOR_SAMPLE;
-
-            uint16_t battery_mv = battery_mon_get_voltage();
-            state_transmit_buffer[BATT_MV_MSB] = (uint8_t) (battery_mv >> 8u);
-            state_transmit_buffer[BATT_MV_LSB] = (uint8_t) (battery_mv & 0x00FFu);
-        }
-
-        state_transmit_buffer[VEL_RPM_MSB] = (uint8_t) (rev_fraction_period_ms >> 8u);
-        state_transmit_buffer[VEL_RPM_LSB] = (uint8_t) (rev_fraction_period_ms & 0x00FFu);
-
-        if (new_gps_data)
-        {
-            state_update_gps_data(state_transmit_buffer);
-        }
-
         received_payload_len = radio_listen(control_receive_buffer);
 
         if (CONTROL_PAYLOAD_LEN == received_payload_len)
         {
-            target_steering = ((((uint16_t) control_receive_buffer[DIR_CTRL_MSB]) << 8u) | control_receive_buffer[DIR_CTRL_LSB]);
+            // Control de motores con payload recibida.
+            target_steering = control_receive_buffer[DIR_CTRL_VAL];
             target_speed = control_receive_buffer[VEL_CTRL_VAL];
+            are_motors_enabled = (0u != target_speed);
 
             motor_control(target_steering, target_speed);
 
+            // Obtener datos de sensores para la siguiente transmision de estado.
+            uint16_t battery_mv = battery_mon_get_voltage();
+            state_transmit_buffer[BATT_MV_MSB] = (uint8_t) (battery_mv >> 8u);
+            state_transmit_buffer[BATT_MV_LSB] = (uint8_t) (battery_mv & 0x00FFu);
+
+            uint16_t rev_fraction_period_ms = (uint16_t) (rev_fraction_period_us / 1000u);
+            state_transmit_buffer[REV_MS_MSB] = (uint8_t) (rev_fraction_period_ms >> 8u);
+            state_transmit_buffer[REV_MS_LSB] = (uint8_t) (rev_fraction_period_ms & 0x00FFu);
+
+            if (new_gps_data)
+            {
+                state_update_gps_data(state_transmit_buffer);
+            }
+
             radio_transmit(state_transmit_buffer, STATE_BUF_LEN);
         }
+
+        timer_execute_pending_callbacks();
 
         EM_ENTER_LPM0;
     }
@@ -145,74 +146,40 @@ int main(void)
     return 0;
 }
 
-#pragma vector=TIMER0_A0_VECTOR
-__interrupt void timer_a0_ccr0_isr(void)
+void timer_event_callback(void)
 {
-    static uint16_t ms_before_bat_mon_sample = BATTERY_MON_SAMPLE_PERIOD_MS;
+    static uint16_t counts_before_mpu6050_sample = MPU6050_SAMPLE_PERIOD_COUNTS;
+    static uint16_t counts_before_battery_sample = BATTERY_SAMPLE_PERIOD_COUNTS;
+    int16_t acce_x;
+    int16_t pitch;
+    int16_t roll;
 
-    if (0u == ms_before_bat_mon_sample)
+    if (0u == counts_before_battery_sample)
     {
-        ms_before_bat_mon_sample = BATTERY_MON_SAMPLE_PERIOD_MS;
-        banderas_sistema |= BEGIN_BATTERY_MONITOR_SAMPLE;
-        __bic_SR_register_on_exit(CPUOFF);
+        counts_before_battery_sample = BATTERY_SAMPLE_PERIOD_COUNTS;
+        battery_mon_sample(are_motors_enabled);
+    }
+    else
+    {
+        --counts_before_battery_sample;
     }
 
-    --ms_before_bat_mon_sample;
-
-    TA0CCR0 += 1000u;
-}
-
-#pragma vector=TIMER0_A1_VECTOR
-__interrupt void timer_a0_taifg_isr(void)
-{
-    // Esta ISR es invocada para CCR1, CCR2 y TAIFG (overflow).
-    static volatile uint16_t timer_overflow_count = 0u;
-    static uint8_t i = 0u;
-    static uint16_t edges[2u] = {};
-
-    switch (TA0IV)
+    if (0u == counts_before_mpu6050_sample)
     {
-    case TA0IV_TACCR1:
-        if (CCI & TA0CCTL1)
-        {
-            edges[i++] = TA0CCR1;
+        counts_before_mpu6050_sample = MPU6050_SAMPLE_PERIOD_COUNTS;
+        mpu6050_accel_pitch_roll(&acce_x, &pitch, &roll);
 
-            if (2u <= i)
-            {
-                i = 0u;
-
-                if (edges[0] > edges[1])
-                {
-                    if (0u != timer_overflow_count)
-                    {
-                        timer_overflow_count--;
-                    }
-
-                    rev_fraction_period_ms = (uint16_t) (((uint32_t) (edges[1] - edges[0])) + (0xFFFFu * timer_overflow_count)) / 1000u;
-                }
-                else
-                {
-                    rev_fraction_period_ms = (uint16_t) (((uint32_t) (edges[0] - edges[1])) + (0xFFFFu * timer_overflow_count)) / 1000u;
-                }
-            }
-
-            timer_overflow_count = 0u;
-        }
-        break;
-    case TA0IV_TAIFG:
-        timer_overflow_count++;
-        break;
+        state_transmit_buffer[ACCEL_X_MSB] = (acce_x >> 8u);
+        state_transmit_buffer[ACCEL_X_LSB] = acce_x;
+        state_transmit_buffer[PITCH_MSB] = (pitch >> 8u);
+        state_transmit_buffer[PITCH_LSB] = pitch;
+        state_transmit_buffer[ROLL_MSB] = (roll >> 8u);
+        state_transmit_buffer[ROLL_LSB] = roll;
     }
-}
-
-void input_capture_init(void)
-{
-    P1SEL |= VEL_INPUT_CAPTURE_PIN;
-    P1SEL2 &= ~VEL_INPUT_CAPTURE_PIN;
-
-    P1DIR &= ~VEL_INPUT_CAPTURE_PIN;
-
-    TA0CCTL1 |= (CM_1 | CCIS_0 | SCS | CAP | CCIE);
+    else
+    {
+        --counts_before_mpu6050_sample;
+    }
 }
 
 void state_update_gps_data(uint8_t * const buffer)

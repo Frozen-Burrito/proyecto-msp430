@@ -33,14 +33,14 @@ void timer_start(uint8_t timer_id, uint8_t count_id, uint16_t period_ms, timer_c
             timer_periods_ms[0] = period_ms;
             timer_counts_ms[0] = period_ms;
             callbacks[0] = cb;
-            TA0CCR0 = TA0R + 1000u;
+            TA0CCR0 = 1000u;
             TA0CCTL0 |= CCIE;
             break;
         case COUNT_2:
             timer_periods_ms[1] = period_ms;
             timer_counts_ms[1] = period_ms;
             callbacks[1] = cb;
-            TA0CCR1 = TA0R + 1000u;
+            TA0CCR1 = 1000u;
             TA0CCTL1 |= CCIE;
             break;
         }
@@ -58,7 +58,6 @@ void timer_start(uint8_t timer_id, uint8_t count_id, uint16_t period_ms, timer_c
 //    }
 }
 
-//void timer_input_capture(uint8_t timer_id, uint8_t count_id, uint8_t pin, uint8_t port)
 void timer_input_capture(uint8_t timer_id, uint8_t count_id, uint8_t pin)
 {
     if (TIMER_A0 == timer_id)
@@ -146,21 +145,21 @@ void timer_pwm_set_duty(uint8_t timer_id, uint8_t pin_mask, uint16_t duty_period
     }
 }
 
-//#pragma vector=TIMER0_A0_VECTOR
-//__interrupt void timer_a0_ccr0_isr(void)
-//{
-//    timer_counts_ms[0]--;
-//
-//    if (0u == timer_counts_ms[0])
-//    {
-//        timer_counts_ms[0] = timer_periods_ms[0];
-//        pending_callbacks |= TIMER_A0_0_FLAG;
-//        __bic_SR_register_on_exit(CPUOFF);
-//    }
-//
-//    TA0CCR0 += 1000u;
-//}
-//
+#pragma vector=TIMER0_A0_VECTOR
+__interrupt void timer_a0_ccr0_isr(void)
+{
+    timer_counts_ms[0]--;
+
+    if (0u == timer_counts_ms[0])
+    {
+        timer_counts_ms[0] = timer_periods_ms[0];
+        pending_callbacks |= TIMER_A0_0_FLAG;
+        __bic_SR_register_on_exit(CPUOFF);
+    }
+
+    TA0CCR0 += 1000u;
+}
+
 //#pragma vector=TIMER0_A1_VECTOR
 //__interrupt void timer_a0_taifg_isr(void)
 //{
